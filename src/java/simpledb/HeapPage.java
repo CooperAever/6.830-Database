@@ -67,8 +67,9 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+        //_tuples per page_ = floor((_page size_ * 8) / (_tuple size_ * 8 + 1))
+        int num = (int)Math.floor((BufferPool.getPageSize()*8*1.0)/(td.getSize()*8+1));
+        return num;
     }
 
     /**
@@ -78,8 +79,8 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
-                 
+        // headerBytes = ceiling(tupsPerPage/8)
+        return (int)Math.ceil(getNumTuples()*1.0/8);
     }
     
     /** Return a view of this page before it was modified
@@ -111,8 +112,8 @@ public class HeapPage implements Page {
      * @return the PageId associated with this page.
      */
     public HeapPageId getId() {
-    // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        // some code goes here
+        return pid;
     }
 
     /**
@@ -282,7 +283,13 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int cnt = 0;
+        for(int i=0;i<numSlots;++i){
+            if(!isSlotUsed(i)){
+                ++cnt;
+            }
+        }
+        return cnt;
     }
 
     /**
@@ -290,7 +297,13 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        // use bitmap
+        int quot = i/8;
+        int remainder = i%8;
+
+        int bitidx = header[quot];
+        int bit = (bitidx>>remainder) & 1;
+        return bit == 1;
     }
 
     /**
@@ -307,7 +320,13 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        ArrayList<Tuple> filledTuples = new ArrayList<Tuple>();
+        for(int i=0;i<numSlots;++i){
+            if(isSlotUsed(i)){
+                filledTuples.add(tuples[i]);
+            }
+        }
+        return filledTuples.iterator();
     }
 
 }
