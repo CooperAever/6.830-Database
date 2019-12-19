@@ -2,6 +2,7 @@ package simpledb;
 
 import javax.xml.crypto.Data;
 import java.io.*;
+import java.util.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,7 +29,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
 
     private final int numPages;
-    private final ConcurrentHashMap<Integer,Page> pageStore;
+    private final ConcurrentHashMap<PageId,Page> pageStore;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -38,7 +39,7 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         this.numPages = numPages;
-        pageStore = new ConcurrentHashMap<Integer,Page>();
+        pageStore = new ConcurrentHashMap<PageId,Page>();
     }
     
     public static int getPageSize() {
@@ -73,12 +74,12 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        if(!pageStore.containsKey(pid.hashCode())){
+        if(!pageStore.containsKey(pid)){
             DbFile dbfile = Database.getCatalog().getDatabaseFile(pid.getTableId());
             Page page = dbfile.readPage(pid);
-            pageStore.put(pid.hashCode(),page);
+            pageStore.put(pid,page);
         }
-        return pageStore.get(pid.hashCode());
+        return pageStore.get(pid);
     }
 
     /**
@@ -144,6 +145,8 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile f = Database.getCatalog().getDatabaseFile(tableId);
+        updateBufferPool(f.insertTuple(tid,t),tid);
     }
 
     /**
@@ -163,6 +166,18 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        DbFile f = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        updateBufferPool(f.deleteTuple(tid,t),tid);
+    }
+
+    private void updateBufferPool(ArrayList<Page> pagelist,TransactionId tid) throws DbException{
+        for(Page p:pagelist){
+            p.markDirty(true,tid);
+            // update bufferpool
+            if(pageStore.size() > numPages)
+                evictPage();
+            pageStore.put(p.getId(),p);
+        }
     }
 
     /**
@@ -173,7 +188,9 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        for(Page p:pageStore.values()){
+            flushPage(p.getId());
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -187,6 +204,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        pageStore.remove(pid);
     }
 
     /**
@@ -196,6 +214,16 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        Page p = pageStore.get(pid);
+        TransactionId tid = null;
+        // flush it if it is dirty
+        if((tid = p.isDirty())!= null){
+            Database.getLogFile().logWrite(tid,p.getBeforeImage(),p);
+            Database.getLogFile().force();
+            // write to disk
+            Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(p);
+            p.markDirty(false,null);
+        }
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -212,6 +240,13 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        PageId pid= new ArrayList<>(pageStore.keySet()).get(0);
+        try{
+            flushPage(pid);
+        }catch(IOException e){
+            e.printStackTrace();
+        }
+        discardPage(pid);
     }
 
 }
