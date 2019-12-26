@@ -202,6 +202,10 @@ public class BufferPool {
         while(!lockAcquired){
             long now = System.currentTimeMillis();
             if(now-start > timeout){
+                // TransactionAbortedException means detect a deadlock
+                // after upper caller catch TransactionAbortedException
+                // will call transactionComplete to abort this transition
+                // give someone else a chance: abort the transaction
                 throw new TransactionAbortedException();
             }
             lockAcquired = lockManager.acquireLock(pid,tid,lockType);
